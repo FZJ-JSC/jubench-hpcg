@@ -1,0 +1,2 @@
+jube_benchmark_id,system,modules,nodes,taskspernode,threadspertask,OMP_PROC_BIND,nx,ny,nz,tot_mem,GB_read,GB_write,GB_total,GB_t_o,GF_DDOT,GF_WAXPBY,GF_SpMV,GF_MG,MinAllreduce,MaxAllreduce,AvgAllreduce,GF_RawTotal,GF_Total,valid,runtime[sec],job_id,status
+171,JRDC,2022-go,1,8,4,true,512,512,296,443.747,11776.2,2720.89,14497,13058,1644.57,840.295,1501.94,2077.6,0.128419,0.376518,0.284764,1912.8,1722.93,1,1771.46,11462656,COMPLETED

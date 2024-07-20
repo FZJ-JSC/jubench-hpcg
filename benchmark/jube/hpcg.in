@@ -1,0 +1,4 @@
+HPCG benchmark input file
+Juelich Supercomputing Center (JSC); FZJ, Germany
+§LOCAL_DIM_X§ §LOCAL_DIM_Y§ §LOCAL_DIM_Z§
+§DURATION_SECONDS§

@@ -1,0 +1,296 @@
+name: HPCG
+outpath: bench_run
+comment: CPUs (x86_64) and GPUs (CUDA, ROCm) supported
+
+fileset:
+  - name: hpcg_config
+    copy: hpcg.in
+  - name: sources
+    link: "../../src"
+
+substituteset:
+  - name: hpcg_config_subs
+    iofile:
+      in:  hpcg.in
+      out: hpcg.dat
+    sub:
+    - { source: §LOCAL_DIM_X§,      dest: $hpcg_local_dim_x }
+    - { source: §LOCAL_DIM_Y§,      dest: $hpcg_local_dim_y }
+    - { source: §LOCAL_DIM_Z§,      dest: $hpcg_local_dim_z }
+    - { source: §DURATION_SECONDS§, dest: $hpcg_time        }
+
+parameterset:
+  # parameters used in compilation step
+  - name: hpcg_comp_param
+    parameter:
+      # CPU
+      - { name: hpcg_version, tag: 'cpu+!cuda+!rocm', _: "3-1-0"   }
+      - { name: prep_script,  tag: 'cpu+!cuda+!rocm', _: "./src/prepare_cpu.sh" }
+      - { name: src_dir,      tag: 'cpu+!cuda+!rocm', _: "./src/hpcg-cpu"  }
+      # CUDA
+      - { name: hpcg_version, tag: 'cuda+!cpu+!rocm', _: "1-0-0"   }
+      - { name: prep_script,  tag: 'cuda+!cpu+!rocm', _: "./src/prepare_cuda.sh" }
+      - { name: src_dir,      tag: 'cuda+!cpu+!rocm', _: "./src/hpcg-cuda" }
+      # ROCm
+      - { name: hpcg_version, tag: 'rocm+!cpu+!cuda', _: "3a5e87e" }
+      - { name: prep_script,  tag: 'rocm+!cpu+!cuda', _: "./src/prepare_rocm.sh" }
+      - { name: src_dir,      tag: 'rocm+!cpu+!cuda', _: "./src/hpcg-rocm" }
+
+  # ____________EXECUTE______________
+  # parameters for execute step
+  - name: hpcg_param
+    parameter:
+      - { name: hpcg_time, type: int, _: 600 }
+      # CPU or ROCm
+      - { name: hpcg_log_file,    tag: '(cpu|rocm)+!cuda', _: '${jube_wp_abspath}/HPCG-Benchmark_3.1_*.txt'        }
+      # CUDA
+      - { name: hpcg_log_file,    tag: 'cuda+!cpu+!rocm',  _: '${jube_wp_abspath}/HPCG-CUDA-Benchmark_1.0.0_*.txt' }
+      # CPU
+      - { name: hpcg_local_dim_x, tag: 'cpu+!cuda+!rocm', type: int, _: 256 }
+      - { name: hpcg_local_dim_y, tag: 'cpu+!cuda+!rocm', type: int, _: 128 }
+      - { name: hpcg_local_dim_z, tag: 'cpu+!cuda+!rocm', type: int, _: 128 }
+      # CUDA
+      - { name: hpcg_local_dim_x, tag: 'cuda+!rocm+!cpu', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'cuda+!rocm+!cpu', type: int, _: 432 }
+      - { name: hpcg_local_dim_z, tag: 'cuda+!rocm+!cpu', type: int, _: 304 }
+      # ROCm
+      - { name: hpcg_local_dim_x, tag: 'rocm+!cuda+!cpu', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'rocm+!cuda+!cpu', type: int, _: 512 }
+      - { name: hpcg_local_dim_z, tag: 'rocm+!cuda+!cpu', type: int, _: 296 }
+  # set system-dependent parameters
+    # CPU
+  - name: systemParameter
+    init_with: platform.xml
+    tag: 'cpu+!cuda+!rocm'
+    parameter:
+      - { name: nodes,                        type: int, _: 1 }
+      - { name: idx,            mode: python, type: int, _: '{"JRDC": "0,1,2,3", "JWB": 0}["${system}"]' }
+      - { name: taskspernode,   mode: python, type: int, _: '{"JRDC": [128,64,32,16][$idx], "JWB": [48,24,12,6][$idx]}["${system}"]' }
+      - { name: threadspertask, mode: python, type: int, _: '{"JRDC": [1,2,4,8][$idx], "JWB": [1,2,4,8][$idx]}["${system}"]' }
+      - { name: queue,          mode: python,            _: '{"JRDC": "dc-cpu", "JWB": "booster"}["${system}"]' }
+      - { name: cell, tag: 'cell', mode: python,  _: '{"JRDC": "[cell01|cell06|cell07]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}["${system}"]'}
+      - { name: rack, tag: 'rack', mode: python,  _: '{"JRDC": "[rack01|rack02|rack11|rack12|rack13|rack14]"}["${system}"]'}
+      - { name: constraint, tag: 'cell+!rack',    _: "#SBATCH --constraint=\"${cell}\"" }
+      - { name: constraint, tag: 'rack+!cell',    _: "#SBATCH --constraint=\"${rack}\"" }
+      - { name: additional_job_config, tag: 'cell|rack',    _: "${constraint}\n\n${load_modules}" }
+      - { name: additional_job_config, tag: '!(cell|rack)', _: "${load_modules}" }
+      - { name: OMP_PROC_BIND,   export: true, _: "true"  }
+      - { name: OMP_DISPLAY_ENV, export: true, _: "false" }
+      - { name: timelimit,                  _: "00:30:00" }
+      - { name: measurement,                _: "time -p"  }
+      - { name: executable, tag: '!binary', _: "./compile/src/hpcg-cpu/build/xhpcg" }
+      - { name: executable, tag: 'binary',  _: "./compile/src/hpcg-cpu/build/xhpcg" }
+      - { name: args_exec,                  _: ""         }
+    # CUDA
+  - name: systemParameter
+    init_with: platform.xml
+    tag: 'cuda+!cpu+!rocm'
+    parameter:
+      - { name: nodes,                        type: int, _: 1 }
+      - { name: taskspernode,                 type: int, _: 4 }
+      - { name: threadspertask, mode: python, type: int, _: '{"JRDC": 16, "JWB": 6}["${system}"]' }
+      - { name: queue,          mode: python,            _: '{"JRDC": "dc-gpu-devel", "JWB": "booster"}["${system}"]' }
+      - { name: cell, tag: 'cell', mode: python, _: '{"JRDC": "[cell02|cell03|cell04|cell05]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}["${system}"]'}
+      - { name: rack, tag: 'rack', mode: python, _: '{"JRDC": "[rack03|rack04|rack05|rack06|rack07|rack08|rack09|rack10]"}["${system}"]'}
+      - { name: constraint, tag: 'cell+!rack',   _: "#SBATCH --constraint=\"${cell}\"" }
+      - { name: constraint, tag: 'rack+!cell',   _: "#SBATCH --constraint=\"${rack}\"" }
+      - { name: additional_job_config, tag: 'cell|rack',    _: "${constraint}\n\n${load_modules}" }
+      - { name: additional_job_config, tag: '!(cell|rack)', _: "${load_modules}" }
+      - { name: OMP_DISPLAY_ENV, export: true, _: "false" }
+      - { name: timelimit,                  _: "00:30:00" }
+      - { name: measurement,                _: "time -p"  }
+      - { name: executable,                 _: "sh ./compile/src/hpcg-cuda/hpcg.bash" }
+      - { name: args_exec,   mode: python,  _: '{"JRDC": "--ucx-affinity mlx5_0:mlx5_1:mlx5_0:mlx5_1 --cpu-affinity 48-63:16-31:112-127:80-95 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --cpu-cores-per-rank ${threadspertask} --dat hpcg.dat", "JWB": "--ucx-affinity mlx5_0:mlx5_1:mlx5_2:mlx5_3 --cpu-affinity 18-23:6-11:42-47:30-35 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --cpu-cores-per-rank ${threadspertask} --dat hpcg.dat"}.get("${system}","")' }
+      - { name: gres,                       _: "gpu:4"    }
+    # ROCm
+  - name: systemParameter
+    init_with: platform.xml
+    tag: 'rocm+!cpu+!cuda'
+    parameter:
+      - { name: nodes,          type: int, _: 1           }
+      - { name: taskspernode,   type: int, _: 8           }
+      - { name: threadspertask, type: int, _: 4           }
+      - { name: queue,                     _: "dc-mi200"  }
+      - { name: additional_job_config,         _: "${load_modules}" }
+      - { name: OMP_PROC_BIND,   export: true, _: "true"  }
+      - { name: OMP_DISPLAY_ENV, export: true, _: "true"  }
+      - { name: timelimit,                  _: "00:30:00" }
+      - { name: measurement,                _: "time -p"  }
+      - { name: executable, tag: 'binary',  _: "./compile/src/hpcg-rocm/build/release/reference/bin/rochpcg" }
+      - { name: executable, tag: '!binary', _: "./compile/src/hpcg-rocm/build/release/reference/bin/rochpcg" }
+  - name: executeset
+    init_with: platform.xml
+    parameter:
+      - { name: args_starter, tag: 'cpu+!cuda+!rocm', mode: python, _: '{ "JRDC": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads"}.get("${system}", "")' }
+      - { name: args_starter, tag: 'cuda+!cpu+!rocm', mode: python, _: '{ "JRDC": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none", "JWB": "--cpus-per-task=${threadspertask} --cpu-bind=none"}.get("${system}", "")' }
+      - { name: args_starter, tag: 'rocm+!cpu+!cuda', _: "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads" }
+
+step:
+  # compile HPCG benchmark
+  - name: compile
+    suffix: "${modules}"
+    use:
+      - from: stages_include.yml
+        _: sys_module_params
+      - hpcg_comp_param
+      - sources
+    do:
+            #- tag: 'cpu|cuda'
+      - tag: 'cpu|cuda|rocm'
+        _: ${load_modules};
+        # CPU or ROCm
+      - tag: '!cuda+!binary'
+        _: module load CMake;
+        # CPU, ROCm, CUDA
+      - tag: '!binary'
+           # download source code (CPU, ROCm)
+           # or modify hpcg.sh proxy script (CUDA)
+        _: sh ${prep_script} ${src_dir};
+        # CPU
+      - tag: 'cpu+!cuda+!rocm+!binary'
+        work_dir: "src/hpcg-cpu"
+        _: |
+           if [ -d build ]; then
+               echo "directory \"build\" already exists - deleting previous HPCG build"
+               rm -rf build;
+           fi
+           mkdir build; cd build;
+           cmake -DCMAKE_CXX_COMPILER=${cxx_compiler} -DCMAKE_BUILD_TYPE=Release -DHPCG_ENABLE_MPI=ON -DHPCG_ENABLE_OPENMP=ON ../ && make -j 16;
+        # ROCm
+      - tag: 'rocm+!cpu+!cuda+!binary'
+        work_dir: "src/hpcg-rocm"
+        _: |
+           if [ -d build/release/reference ]; then
+               echo "directory \"build/release/reference\" already exists - deleting previous HPCG build"
+               rm -rf build/release/reference;
+           fi
+           mkdir -p build/release/reference; cd build/release/reference;
+           cmake -DHPCG_OPENMP=true -DOPT_MEMMGMT=true -DOPT_DEFRAG=true -DGPU_AWARE_MPI=ON -DCMAKE_BUILD_TYPE=Release -DROCM_PATH=$${ROCM_PATH} -DCMAKE_MODULE_PATH=$${ROCM_PATH}/hip/lib/cmake/hip -DHPCG_REFERENCE=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON ../../../ && make -j 16;
+
+  # generate job script and submit the job
+  - name: execute
+    depend: compile
+    suffix: "${nodes}_${taskspernode}_${threadspertask}_${modules}"
+    iterations: 1
+    max_async: 48
+    use:
+      - hpcg_config
+      - hpcg_config_subs
+      - hpcg_param
+      - systemParameter
+      - executeset
+      - from: platform.xml
+        _: executesub
+      - from: platform.xml
+        _: jobfiles
+    do:
+      - { done_file: $done_file, _: "${submit} ${submit_script}" }
+
+# _______________RESULT________________
+patternset:
+  - name: runtime_pat
+    pattern:
+      - { name: runtime, mode: pattern, unit: sec, type: float, _: 'real ${jube_pat_fp}' }
+  - name: job_pat
+    pattern:
+      - { name: job_id,    mode: pattern, type: int,  _: 'Submitted batch job ${jube_pat_int}' }
+      - { name: status,    mode: shell,               _: 'sacct --format State -j ${job_id} | head -n 3 | tail -n 1' }
+      - { name: exit_code, mode: shell,               _: 'sacct --format ExitCode -j ${job_id} | head -n 3 | tail -n 1' }
+    
+  - name: hpcg_pat
+    pattern:
+      - { name: nx,            mode: text,    _: "${hpcg_local_dim_x}" }
+      - { name: ny,            mode: text,    _: "${hpcg_local_dim_y}" }
+      - { name: nz,            mode: text,    _: "${hpcg_local_dim_z}" }
+      - { name: tot_mem,       mode: pattern, _: 'Memory Use Information::Total memory used for data \(Gbytes\)=${jube_pat_fp}' }
+      - { name: GB_read,       mode: pattern, _: 'GB/s Summary::Raw Read B/W=${jube_pat_fp}'  }
+      - { name: GB_write,      mode: pattern, _: 'GB/s Summary::Raw Write B/W=${jube_pat_fp}' }
+      - { name: GB_total,      mode: pattern, _: 'GB/s Summary::Raw Total B/W=${jube_pat_fp}' }
+      - { name: GB_t_o,        mode: pattern, _: 'GB/s Summary::Total with convergence and optimization phase overhead=${jube_pat_fp}' }
+      - { name: GF_DDOT,       mode: pattern, _: 'GFLOP/s Summary::Raw DDOT=${jube_pat_fp}'   }
+      - { name: GF_WAXPBY,     mode: pattern, _: 'GFLOP/s Summary::Raw WAXPBY=${jube_pat_fp}' }
+      - { name: GF_SpMV,       mode: pattern, _: 'GFLOP/s Summary::Raw SpMV=${jube_pat_fp}'   }
+      - { name: GF_MG,         mode: pattern, _: 'GFLOP/s Summary::Raw MG=${jube_pat_fp}'     }
+      - { name: MinAllreduce,  mode: pattern, _: 'DDOT Timing Variations::Min DDOT MPI_Allreduce time=${jube_pat_fp}' }
+      - { name: MaxAllreduce,  mode: pattern, _: 'DDOT Timing Variations::Max DDOT MPI_Allreduce time=${jube_pat_fp}' }
+      - { name: AvgAllreduce,  mode: pattern, _: 'DDOT Timing Variations::Avg DDOT MPI_Allreduce time=${jube_pat_fp}' }
+      - { name: GF_RawTotal,   mode: pattern, _: 'GFLOP/s Summary::Raw Total=${jube_pat_fp}'  }
+      - { name: GF_Total,      mode: pattern, _: 'GFLOP/s Summary::Total with convergence and optimization phase overhead=${jube_pat_fp}' }
+      # result verification; check if VALID is present in result file
+      - { name: valid,         mode: shell,   _: 'grep -c VALID ${hpcg_log_file}' }
+
+analyser:
+  name: analyse
+  reduce: false
+  analyse:
+    step: execute
+    file:
+      - { use: hpcg_pat,    _: "${hpcg_log_file}" }
+      - { use: runtime_pat, _: "${errlogfile}"    }
+      - { use: job_pat,     _: "stdout"           }
+
+result:
+  use: analyse
+  table:
+    - name: table_pretty
+      style: pretty
+      sort: modules,nodes,taskspernode,threadspertask
+      column:
+        - modules
+        - nodes
+        - taskspernode
+        - threadspertask
+        - OMP_PROC_BIND
+        - nx
+        - ny
+        - nz
+        - tot_mem
+        - GB_read
+        - GB_write
+        - GB_total
+        - GB_t_o
+        - GF_DDOT
+        - GF_WAXPBY
+        - GF_SpMV
+        - GF_MG
+        - MinAllreduce
+        - MaxAllreduce
+        - AvgAllreduce
+        - GF_RawTotal
+        - GF_Total
+        - valid
+        - runtime
+        - job_id
+        - status
+    - name: table_csv
+      style: csv
+      sort: modules,nodes,taskspernode,threadspertask
+      column:
+        - jube_benchmark_id
+        - system
+        - modules
+        - nodes
+        - taskspernode
+        - threadspertask
+        - OMP_PROC_BIND
+        - nx
+        - ny
+        - nz
+        - tot_mem
+        - GB_read
+        - GB_write
+        - GB_total
+        - GB_t_o
+        - GF_DDOT
+        - GF_WAXPBY
+        - GF_SpMV
+        - GF_MG
+        - MinAllreduce
+        - MaxAllreduce
+        - AvgAllreduce
+        - GF_RawTotal
+        - GF_Total
+        - valid
+        - runtime
+        - job_id
+        - status

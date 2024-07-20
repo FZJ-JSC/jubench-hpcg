@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: "JUPITER Benchmark Suite: HPCG"
+message: >-
+  In addition to citing this benchmark repository, please also cite either the JUPITER Benchmark Suite or the accompanying SC24 paper
+authors:
+  - given-names: Jan-Oliver
+    family-names: Mirus
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
+    orcid: 'https://orcid.org/0009-0006-7975-1393'
+  - given-names: Thomas
+    family-names: Breuer
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
+    orcid: 'https://orcid.org/0000-0003-3979-4795'
+  - given-names: Sebastian
+    family-names: Achilles
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
+    orcid: 'https://orcid.org/0000-0002-1943-6803'
+  - given-names: Andreas
+    family-names: Herten
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
+    orcid: 'https://orcid.org/0000-0002-7150-2505'
+abstract: "The HPCG benchmark of the JUPITER Benchmark Suite"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.12787776
+    description: Version-agnostic Zenodo Identifier
+repository-code: 'https://github.com/FZJ-JSC/jubench-hpcg/'
+license: MIT
+date-released: '2024-07-20'
+references:
+  - title: "JUPITER Benchmark Suite"
+    type: software
+    doi: 10.5281/zenodo.12737073
