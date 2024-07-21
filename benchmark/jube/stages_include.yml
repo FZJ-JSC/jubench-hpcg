@@ -4,49 +4,60 @@ parameterset:
   parameter:
     - { name: system,   tag: jwb,  _: "JWB"  }
     - { name: system,   tag: jrdc, _: "JRDC" }
+    - { name: system,   tag: jedi, _: "JEDI" }
 
     - { name: sys_arch, tag: cpu+!cuda+!rocm, _: "" }
-    - { name: sys_arch, tag: cuda+!cpu+!rocm, _: "UCX-settings/RC-CUDA" }
-    - { name: sys_arch, tag: rocm+!cpu+!cuda, _: "Architecture/jureca_mi200 ROCm/5.4.0 UCX-settings/RC-ROCm" }
+    - { name: sys_arch, tag: cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm+s22, _: "CUDA UCX-settings/RC-CUDA" }
+    - { name: sys_arch, tag: cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm+s23, _: "CUDA MPI-settings/CUDA" }
+    - { name: sys_arch, tag: nvidia+!rocm+s24+jedi, _: "NVHPC/24.3-CUDA-12 NVPL/24.03 MPI-settings/CUDA" }
+    - { name: sys_arch, tag: nvidia+!rocm+s24+(jrdc|jwb), _: "NVHPC/24.3-CUDA-12 MPI-settings/CUDA" }
+    - { name: sys_arch, tag: rocm+!cpu+!cuda+s22, _: "Architecture/jureca_mi200 OpenMPI/4.1.4 ROCm/5.4.0 UCX-settings/RC-ROCm" }
 
   # Stages
     - { name: stage,    tag: s22,  _: "2022" }
+    - { name: stage,    tag: s23,  _: "2023" }
+    - { name: stage,    tag: s24,  _: "2024" }
   # compiler
-    - { name: GCC,   mode: python, _: '{"2022": "GCC/11.2.0"}["${stage}"]'   }
-    - { name: Intel, mode: python, _: '{"2022": "Intel/2021.4"}["${stage}"]' }
+    - { name: GCC,   mode: python, _: '{"2022": "GCC/11.2.0", "2023": "GCC/11.3.0", "2024": "GCC/12.3.0"}["${stage}"]'   }
+    - { name: Intel, mode: python, _: '{"2022": "Intel/2021.4.0", "2023": "Intel/2022.1.0", "2024": "Intel/2023.2.1"}["${stage}"]' }
   # MPI
-    - { name: psmpi, mode: python, _: '{"2022": "ParaStationMPI/5.5.0-1"}["${stage}"]' }
-    - { name: ompi,  mode: python, _: '{"2022": "OpenMPI/4.1.2"}["${stage}"]'          }
-    - { name: impi,  mode: python, _: '{"2022": "IntelMPI/2021.4.0"}["${stage}"]'      }
+    - { name: psmpi, mode: python, _: '{"2022": "ParaStationMPI/5.5.0-1", "2023": "ParaStationMPI/5.7.1-1", "2024": "ParaStationMPI/5.9.2-1"}["${stage}"]' }
+    - { name: ompi, tag: '!jedi', mode: python, _: '{"2022": "OpenMPI/4.1.2", "2023": "OpenMPI/4.1.4", "2024": "OpenMPI/4.1.5"}["${stage}"]' }
+    - { name: ompi, tag: jedi, mode: python, _: '{"2024": "OpenMPI/4.1.6"}["${stage}"]' }
+    - { name: impi, mode: python, _: '{"2022": "IntelMPI/2021.4.0", "2023": "unsupported", "2024": "IntelMPI/2021.10.0"}["${stage}"]' }
+    - { name: mpi_root_path, tag: go|io|ii, _: "$$EBROOTOPENMPI" }
+    - { name: mpi_root_path, tag: gps|ips,  _: "$$EBROOTPSMPI"   }
   # CMAKE_CXX_COMPILER
-    - { name: cxx_compiler, tag: go|gps,    mode: python, _: '{"2022": "g++"}["${stage}"]'  }
-    - { name: cxx_compiler, tag: io|ips|ii, mode: python, _: '{"2022": "icpx"}["${stage}"]' }
+    - { name: cxx_compiler, tag: go|gps,    mode: python, _: '{"2022": "g++", "2023": "g++", "2024": "g++"}["${stage}"]'  }
+    - { name: cxx_compiler, tag: io|ips|ii, mode: python, _: '{"2022": "icpx", "2023": "icpx", "2024": "icpx"}["${stage}"]' }
   # combine stage, compiler and MPI
-    - { name: go                                            }
-    - { name: go,   tag: go,              _: "${stage}-go"  }
-    - { name: gps                                           }
-    - { name: gps,  tag: gps+!cuda+!rocm, _: "${stage}-gps" }
-    - { name: io                                            }
-    - { name: io,   tag: io+!cuda+!rocm,  _: "${stage}-io"  }
-    - { name: ips                                           }
-    - { name: ips,  tag: ips+!cuda+!rocm, _: "${stage}-ips" }
-    - { name: ii                                            }
-    - { name: ii,   tag: ii+!cuda+!rocm,  _: "${stage}-ii"  }
+    - { name: go                                                     }
+    - { name: go,  tag: go,                        _: "${stage}-go"  }
+    - { name: gps                                                    }
+    - { name: gps, tag: gps+!(cuda+!nvidia)+!rocm, _: "${stage}-gps" }
+    - { name: io                                                     }
+    - { name: io,  tag: io+!nvidia+!cuda+!rocm,    _: "${stage}-io"  }
+    - { name: ips                                                    }
+    - { name: ips, tag: ips+!nvidia+!cuda+!rocm,   _: "${stage}-ips" }
+    - { name: ii                                                     }
+    - { name: ii,  tag: ii+!nvidia+!cuda+!rocm,    _: "${stage}-ii"  }
 
     - name: modules
       mode: python
-      tag: s22
       _: '{"JWB": ",".join([i for i in "${go} ${gps} ${io} ${ips}".split(" ") if len(i) > 0]),
-           "JRDC": ",".join([i for i in "${go} ${gps} ${io} ${ips} ${ii}".split(" ") if len(i) > 0])}["${system}"]'
+           "JRDC": ",".join([i for i in "${go} ${gps} ${io} ${ips} ${ii}".split(" ") if len(i) > 0]),
+           "JEDI": ",".join([i for i in "${go} ${gps}".split(" ") if len(i) > 0])
+          }["${system}"]'
 
     - name: load_stage
       mode: python
-      _: '{"2022": "ml Stages/${stage}"}["${stage}"]'
+      _: '{"2022": "ml Stages/${stage}", "2023": "ml Stages/${stage}", "2024": "ml Stages/${stage}"}["${stage}"]'
 
     - name: load_modules
       mode: python
       _: '{"${stage}-go": "ml purge; ${load_stage}; ml ${GCC} ${ompi} ${sys_arch}",
-           "${stage}-gps": "ml purge; ${load_stage}; ml ${GCC} ${psmpi}",
+           "${stage}-gps": "ml purge; ${load_stage}; ml ${GCC} ${psmpi} ${sys_arch}",
            "${stage}-io": "ml purge; ${load_stage}; ml ${Intel} ${ompi}",
            "${stage}-ips": "ml purge; ${load_stage}; ml ${Intel} ${psmpi}",
-           "${stage}-ii": "ml purge; ${load_stage}; ml ${Intel} ${impi}"}.get("${modules}","No modules. EXIT!!")'
+           "${stage}-ii": "ml purge; ${load_stage}; ml ${Intel} ${impi}"
+          }.get("${modules}","No modules. EXIT!!")'

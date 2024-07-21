@@ -1,40 +1,66 @@
 name: HPCG
 outpath: bench_run
-comment: CPUs (x86_64) and GPUs (CUDA, ROCm) supported
+comment: CPUs (x86_64, Grace) and GPUs (CUDA, ROCm) supported
 
 fileset:
   - name: hpcg_config
-    copy: hpcg.in
+    copy: hpcg.dat.in
   - name: sources
     link: "../../src"
+  - name: jobscript
+    tag: '!jedi'
+  - name: jobscript
+    tag: 'jedi'
+    copy: "${submit_script}.in"
 
 substituteset:
   - name: hpcg_config_subs
     iofile:
-      in:  hpcg.in
+      in:  hpcg.dat.in
       out: hpcg.dat
     sub:
     - { source: §LOCAL_DIM_X§,      dest: $hpcg_local_dim_x }
     - { source: §LOCAL_DIM_Y§,      dest: $hpcg_local_dim_y }
     - { source: §LOCAL_DIM_Z§,      dest: $hpcg_local_dim_z }
     - { source: §DURATION_SECONDS§, dest: $hpcg_time        }
+  - name: executesub
+    init_with: "platform.xml:executesub"
+    iofile:
+      in:  "${submit_script}.in"
+      out: "${submit_script}"
+    sub:
+      - { source: "#PLACEHOLDER#", dest: $PLACEHOLDER }
 
 parameterset:
   # parameters used in compilation step
   - name: hpcg_comp_param
     parameter:
       # CPU
-      - { name: hpcg_version, tag: 'cpu+!cuda+!rocm', _: "3-1-0"   }
-      - { name: prep_script,  tag: 'cpu+!cuda+!rocm', _: "./src/prepare_cpu.sh" }
-      - { name: src_dir,      tag: 'cpu+!cuda+!rocm', _: "./src/hpcg-cpu"  }
-      # CUDA
-      - { name: hpcg_version, tag: 'cuda+!cpu+!rocm', _: "1-0-0"   }
-      - { name: prep_script,  tag: 'cuda+!cpu+!rocm', _: "./src/prepare_cuda.sh" }
-      - { name: src_dir,      tag: 'cuda+!cpu+!rocm', _: "./src/hpcg-cuda" }
+      - { name: prep_script,  tag: 'cpu+!nvidia+!cuda+!rocm', _: "./src/prepare_cpu.sh" }
+      - { name: src_dir,      tag: 'cpu+!nvidia+!cuda+!rocm', _: "./src/hpcg-cpu" }
+      - { name: git_commitid, tag: 'cpu+!nvidia+!cuda+!rocm', _: "e64982640f0aa83f851fe3e1405c61d9a6d7321c" }
+      - name: cxx_flags
+        tag: 'cpu+!nvidia+!cuda+!rocm'
+        mode: python
+        _: '{ "JRDC": "-DCMAKE_CXX_FLAGS=-mcpu=znver2",
+              "JWB":  "-DCMAKE_CXX_FLAGS=-mcpu=znver2",
+              "JEDI": "-DCMAKE_CXX_FLAGS=-mcpu=neoverse-v2"
+            }.get("${system}", "")'
+      # CUDA (JRDC, JWB)
+      - { name: prep_script,  tag: 'cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm', _: "./src/prepare_cuda.sh" }
+      - { name: src_dir,      tag: 'cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm', _: "./src/hpcg-cuda" }
+      - { name: git_commitid, tag: 'cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm', _: "unused" }
+      # nvidia-hpcg
+      - { name: prep_script,  tag: 'nvidia+!rocm', _: "./src/prepare_nvidia.sh" }
+      - { name: src_dir,      tag: 'nvidia+!rocm', _: "./src/hpcg-nvidia" }
+      - { name: git_commitid, tag: 'nvidia+!rocm', _: "8d7f630195fafb10a23f525251c116ed602d0865" }
       # ROCm
-      - { name: hpcg_version, tag: 'rocm+!cpu+!cuda', _: "3a5e87e" }
-      - { name: prep_script,  tag: 'rocm+!cpu+!cuda', _: "./src/prepare_rocm.sh" }
-      - { name: src_dir,      tag: 'rocm+!cpu+!cuda', _: "./src/hpcg-rocm" }
+      - { name: prep_script,  tag: 'rocm+!nvidia+!cpu+!cuda', _: "./src/prepare_rocm.sh" }
+      - { name: src_dir,      tag: 'rocm+!nvidia+!cpu+!cuda', _: "./src/hpcg-rocm" }
+      - { name: git_commitid, tag: 'rocm+!nvidia+!cpu+!cuda', _: "3a5e87eff6b2ce4c9ba01d273f93d4aff34c4653" }
+      # general
+      - { name: additional_cmake_config, mode: python, _: '" ".join([x for x in "${cxx_flags}".split("#") if len(x) > 0])' }
+
 
   # ____________EXECUTE______________
   # parameters for execute step
@@ -42,34 +68,58 @@ parameterset:
     parameter:
       - { name: hpcg_time, type: int, _: 600 }
       # CPU or ROCm
-      - { name: hpcg_log_file,    tag: '(cpu|rocm)+!cuda', _: '${jube_wp_abspath}/HPCG-Benchmark_3.1_*.txt'        }
+      - { name: hpcg_log_file,    tag: '(cpu|rocm)+!nvidia+!cuda', _: 'HPCG-Benchmark_3.1_*.txt'        }
       # CUDA
-      - { name: hpcg_log_file,    tag: 'cuda+!cpu+!rocm',  _: '${jube_wp_abspath}/HPCG-CUDA-Benchmark_1.0.0_*.txt' }
+      - { name: hpcg_log_file,    tag: 'cuda+!nvidia+!cpu+!rocm',  _: 'HPCG-CUDA-Benchmark_1.0.0_*.txt' }
+      # nvidia-hpcg
+      - { name: hpcg_log_file,    tag: 'nvidia+!rocm',             _: 'HPCG-Benchmark_3.1_*.txt'        }
       # CPU
-      - { name: hpcg_local_dim_x, tag: 'cpu+!cuda+!rocm', type: int, _: 256 }
-      - { name: hpcg_local_dim_y, tag: 'cpu+!cuda+!rocm', type: int, _: 128 }
-      - { name: hpcg_local_dim_z, tag: 'cpu+!cuda+!rocm', type: int, _: 128 }
-      # CUDA
-      - { name: hpcg_local_dim_x, tag: 'cuda+!rocm+!cpu', type: int, _: 512 }
-      - { name: hpcg_local_dim_y, tag: 'cuda+!rocm+!cpu', type: int, _: 432 }
-      - { name: hpcg_local_dim_z, tag: 'cuda+!rocm+!cpu', type: int, _: 304 }
+      - { name: hpcg_local_dim_x, tag: 'cpu+!nvidia+!cuda+!rocm', type: int, _: 256 }
+      - { name: hpcg_local_dim_y, tag: 'cpu+!nvidia+!cuda+!rocm', type: int, _: 128 }
+      - { name: hpcg_local_dim_z, tag: 'cpu+!nvidia+!cuda+!rocm', type: int, _: 128 }
+      # CUDA (JRDC, JWB)
+      - { name: hpcg_local_dim_x, tag: 'cuda+!nvidia+!rocm+!cpu+(jrdc|jwb)', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'cuda+!nvidia+!rocm+!cpu+(jrdc|jwb)', type: int, _: 432 }
+      - { name: hpcg_local_dim_z, tag: 'cuda+!nvidia+!rocm+!cpu+(jrdc|jwb)', type: int, _: 304 }
+      - { name: execution_device, tag: 'cuda+!nvidia+!rocm+!cpu+(jrdc|jwb)', _: "gpu" }
+      # nvidia-hpcg CUDA (JRDC, JWB)
+      - { name: hpcg_local_dim_x, tag: 'nvidia+cuda+!rocm+!cpu+(jrdc|jwb)', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'nvidia+cuda+!rocm+!cpu+(jrdc|jwb)', type: int, _: 256 }
+      - { name: hpcg_local_dim_z, tag: 'nvidia+cuda+!rocm+!cpu+(jrdc|jwb)', type: int, _: 288 }
+      - { name: execution_device, tag: 'nvidia+cuda+!rocm+!cpu+(jrdc|jwb)', _: "gpu" }
+      # nvidia-hpcg CUDA (JEDI)
+      - { name: hpcg_local_dim_x, tag: 'nvidia+cuda+!rocm+!cpu+jedi', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'nvidia+cuda+!rocm+!cpu+jedi', type: int, _: 512 }
+      - { name: hpcg_local_dim_z, tag: 'nvidia+cuda+!rocm+!cpu+jedi', type: int, _: 288 }
+      - { name: execution_device, tag: 'nvidia+cuda+!rocm+!cpu+jedi', _: "gpu" }
+      # nvidia-hpcg CPU (JEDI)
+      - { name: hpcg_local_dim_x, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 256 }
+      - { name: hpcg_local_dim_z, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 288 }
+      - { name: execution_device, tag: 'nvidia+cpu+!rocm+!cuda+jedi', _: "cpu" }
+      # nvidia-hpcg CPU+CUDA (JEDI)
+      - { name: hpcg_local_dim_x, tag: 'nvidia+cpu+cuda+!rocm+jedi', type: int, _: 256  }
+      - { name: hpcg_local_dim_y, tag: 'nvidia+cpu+cuda+!rocm+jedi', type: int, _: 1024 }
+      - { name: hpcg_local_dim_z, tag: 'nvidia+cpu+cuda+!rocm+jedi', type: int, _: 288  }
+      - { name: execution_device, tag: 'nvidia+cpu+cuda+!rocm+jedi', _: "cpu+gpu" }
       # ROCm
-      - { name: hpcg_local_dim_x, tag: 'rocm+!cuda+!cpu', type: int, _: 512 }
-      - { name: hpcg_local_dim_y, tag: 'rocm+!cuda+!cpu', type: int, _: 512 }
-      - { name: hpcg_local_dim_z, tag: 'rocm+!cuda+!cpu', type: int, _: 296 }
+      - { name: hpcg_local_dim_x, tag: 'rocm+!nvidia+!cuda+!cpu', type: int, _: 512 }
+      - { name: hpcg_local_dim_y, tag: 'rocm+!nvidia+!cuda+!cpu', type: int, _: 512 }
+      - { name: hpcg_local_dim_z, tag: 'rocm+!nvidia+!cuda+!cpu', type: int, _: 296 }
   # set system-dependent parameters
     # CPU
   - name: systemParameter
     init_with: platform.xml
-    tag: 'cpu+!cuda+!rocm'
+    tag: 'cpu+!nvidia+!cuda+!rocm'
     parameter:
       - { name: nodes,                        type: int, _: 1 }
-      - { name: idx,            mode: python, type: int, _: '{"JRDC": "0,1,2,3", "JWB": 0}["${system}"]' }
-      - { name: taskspernode,   mode: python, type: int, _: '{"JRDC": [128,64,32,16][$idx], "JWB": [48,24,12,6][$idx]}["${system}"]' }
-      - { name: threadspertask, mode: python, type: int, _: '{"JRDC": [1,2,4,8][$idx], "JWB": [1,2,4,8][$idx]}["${system}"]' }
-      - { name: queue,          mode: python,            _: '{"JRDC": "dc-cpu", "JWB": "booster"}["${system}"]' }
-      - { name: cell, tag: 'cell', mode: python,  _: '{"JRDC": "[cell01|cell06|cell07]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}["${system}"]'}
-      - { name: rack, tag: 'rack', mode: python,  _: '{"JRDC": "[rack01|rack02|rack11|rack12|rack13|rack14]"}["${system}"]'}
+      - { name: idx,            mode: python, type: int, _: '{"JRDC": 0, "JWB": 0, "JEDI": 3}["${system}"]' }
+        #- { name: idx,            mode: python, type: int, _: '{"JRDC": "0,1,2,3", "JWB": 0, "JEDI": 0}["${system}"]' }
+      - { name: taskspernode,   mode: python, type: int, _: '{"JRDC": [128,64,32,16][$idx], "JWB": [48,24,12,6][$idx], "JEDI": [288,144,72,36][$idx]}["${system}"]' }
+      - { name: threadspertask, mode: python, type: int, _: '{"JRDC": [1,2,4,8][$idx], "JWB": [1,2,4,8][$idx], "JEDI": [1,2,4,8][$idx]}["${system}"]' }
+      - { name: queue,          mode: python,            _: '{"JRDC": "dc-cpu-devel", "JWB": "develbooster", "JEDI": "all"}["${system}"]' }
+      - { name: cell, tag: 'cell', mode: python,  _: '{"JRDC": "[cell01|cell06|cell07]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}.get("${system}", "")' }
+      - { name: rack, tag: 'rack', mode: python,  _: '{"JRDC": "[rack01|rack02|rack11|rack12|rack13|rack14]"}.get("${system}", "")' }
       - { name: constraint, tag: 'cell+!rack',    _: "#SBATCH --constraint=\"${cell}\"" }
       - { name: constraint, tag: 'rack+!cell',    _: "#SBATCH --constraint=\"${rack}\"" }
       - { name: additional_job_config, tag: 'cell|rack',    _: "${constraint}\n\n${load_modules}" }
@@ -81,31 +131,69 @@ parameterset:
       - { name: executable, tag: '!binary', _: "./compile/src/hpcg-cpu/build/xhpcg" }
       - { name: executable, tag: 'binary',  _: "./compile/src/hpcg-cpu/build/xhpcg" }
       - { name: args_exec,                  _: ""         }
-    # CUDA
+    # CUDA / nvidia-hpcg
   - name: systemParameter
     init_with: platform.xml
-    tag: 'cuda+!cpu+!rocm'
+    tag: '(cuda|nvidia)+!rocm'
     parameter:
       - { name: nodes,                        type: int, _: 1 }
-      - { name: taskspernode,                 type: int, _: 4 }
-      - { name: threadspertask, mode: python, type: int, _: '{"JRDC": 16, "JWB": 6}["${system}"]' }
-      - { name: queue,          mode: python,            _: '{"JRDC": "dc-gpu-devel", "JWB": "booster"}["${system}"]' }
-      - { name: cell, tag: 'cell', mode: python, _: '{"JRDC": "[cell02|cell03|cell04|cell05]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}["${system}"]'}
-      - { name: rack, tag: 'rack', mode: python, _: '{"JRDC": "[rack03|rack04|rack05|rack06|rack07|rack08|rack09|rack10]"}["${system}"]'}
+      - { name: taskspernode,   mode: python, type: int, _: '{("JEDI","cpu"): 4, ("JEDI","gpu"): 4, ("JEDI","cpu+gpu"): 8, ("JRDC","gpu"): 4, ("JWB","gpu"): 4}.get(("${system}","${execution_device}"), 1)' }
+      - { name: threadspertask, mode: python, type: int, _: '{("JEDI","cpu"): 72, ("JEDI","gpu"): 72, ("JEDI","cpu+gpu"): 64, ("JRDC","gpu"): 16, ("JWB","gpu"): 6}.get(("${system}","${execution_device}"), 1)' }
+      - { name: gpuspertask,    mode: python, type: int, _: '{"JEDI": 1, "JRDC": 1, "JWB": 1}["${system}"]' }
+      - { name: queue,          mode: python,            _: '{"JEDI": "all", "JRDC": "dc-gpu-devel", "JWB": "develbooster"}["${system}"]' }
+      - { name: cell, tag: 'cell', mode: python, _: '{"JRDC": "[cell02|cell03|cell04|cell05]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}.get("${system}", "")' }
+      - { name: rack, tag: 'rack', mode: python, _: '{"JRDC": "[rack03|rack04|rack05|rack06|rack07|rack08|rack09|rack10]"}.get("${system}", "")' }
       - { name: constraint, tag: 'cell+!rack',   _: "#SBATCH --constraint=\"${cell}\"" }
       - { name: constraint, tag: 'rack+!cell',   _: "#SBATCH --constraint=\"${rack}\"" }
       - { name: additional_job_config, tag: 'cell|rack',    _: "${constraint}\n\n${load_modules}" }
       - { name: additional_job_config, tag: '!(cell|rack)', _: "${load_modules}" }
+      - { name: OMP_PROC_BIND,   export: true, _: "true"  }
       - { name: OMP_DISPLAY_ENV, export: true, _: "false" }
+      - { name: OMP_NUM_THREADS, export: true,  tag: '!(nvidia+cpu+cuda+jedi)', _: "${threadspertask}" }
+      - { name: OMP_NUM_THREADS, export: false, tag: 'nvidia+cpu+cuda+jedi',    _: ""                  }
       - { name: timelimit,                  _: "00:30:00" }
       - { name: measurement,                _: "time -p"  }
-      - { name: executable,                 _: "sh ./compile/src/hpcg-cuda/hpcg.bash" }
-      - { name: args_exec,   mode: python,  _: '{"JRDC": "--ucx-affinity mlx5_0:mlx5_1:mlx5_0:mlx5_1 --cpu-affinity 48-63:16-31:112-127:80-95 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --cpu-cores-per-rank ${threadspertask} --dat hpcg.dat", "JWB": "--ucx-affinity mlx5_0:mlx5_1:mlx5_2:mlx5_3 --cpu-affinity 18-23:6-11:42-47:30-35 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --cpu-cores-per-rank ${threadspertask} --dat hpcg.dat"}.get("${system}","")' }
-      - { name: gres,                       _: "gpu:4"    }
+      - { name: noref_calc, tag: 'noref+nvidia',  _: "--b 1" }
+      - { name: noref_calc, tag: '!noref+nvidia', _: ""      }
+      - { name: additional_nvhpcg_config, mode: python, _: '" ".join([x for x in "${noref_calc}".split("#") if len(x) > 0])' }
+      - name: executable
+        tag: 'cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm'
+        mode: python
+        separator: '|'
+        _: '{ ("JRDC","gpu"): "sh ./compile/src/hpcg-cuda/hpcg.bash",
+              ("JWB","gpu"):  "sh ./compile/src/hpcg-cuda/hpcg.bash"
+            }[("${system}","${execution_device}")]'
+      - name: executable
+        tag: 'nvidia+!rocm'
+        mode: python
+        separator: '|'
+        _: '{ ("JEDI","gpu"):     "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
+              ("JEDI","cpu"):     "env LD_PRELOAD=$${EBROOTNVPL}/lib/libnvpl_sparse.so sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
+              ("JEDI","cpu+gpu"): "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib/libnccl.so:$${EBROOTNVPL}/lib/libnvpl_sparse.so sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
+              ("JRDC","gpu"):     "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh ./compile/src/hpcg-nvidia/bin/hpcg.sh",
+              ("JWB","gpu"):      "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh ./compile/src/hpcg-nvidia/bin/hpcg.sh"
+            }.get(("${system}","${execution_device}"), "unsupported system-execution_device combi")'
+      - { name: args_exec, tag: 'cpu+!nvidia+!cuda+!rocm', _: "" }
+      - name: args_exec
+        tag: 'cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm'
+        mode: python
+        _: '{ "JRDC": "--ucx-affinity mlx5_0:mlx5_1:mlx5_0:mlx5_1 --cpu-affinity 48-63:16-31:112-127:80-95 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --cpu-cores-per-rank ${threadspertask} --dat hpcg.dat",
+              "JWB":  "--ucx-affinity mlx5_0:mlx5_1:mlx5_2:mlx5_3 --cpu-affinity 18-23:6-11:42-47:30-35 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --cpu-cores-per-rank ${threadspertask} --dat hpcg.dat"
+            }.get("${system}","")'
+      - name: args_exec
+        tag: 'nvidia+!rocm'
+        mode: python
+        _: '{ ("JEDI","cpu+gpu"): "${additional_nvhpcg_config} --of 1 --nx ${hpcg_local_dim_x} --ny ${hpcg_local_dim_y} --nz ${hpcg_local_dim_z} --rt ${hpcg_time} --exm 2 --ddm 2 --lpm 1 --g2c 64 --npx 4 --npy 2 --npz 1 --cpu-affinity 0-7:8-71:72-79:80-143:144-151:152-215:216-223:224-287 --mem-affinity 0:0:1:1:2:2:3:3",
+              ("JEDI","cpu"):     "${additional_nvhpcg_config} --of 1 --nx ${hpcg_local_dim_x} --ny ${hpcg_local_dim_y} --nz ${hpcg_local_dim_z} --rt ${hpcg_time} --exm 1 --cpu-affinity 0-71:72-143:144-215:216-287 --mem-affinity 0:1:2:3",
+              ("JEDI","gpu"):     "${additional_nvhpcg_config} --of 1 --nx ${hpcg_local_dim_x} --ny ${hpcg_local_dim_y} --nz ${hpcg_local_dim_z} --rt ${hpcg_time} --cpu-affinity 0-71:72-143:144-215:216-287 --mem-affinity 0:1:2:3",
+              ("JRDC","gpu"):     "${additional_nvhpcg_config} --of 1 --ucx-affinity mlx5_0:mlx5_1:mlx5_0:mlx5_1 --cpu-affinity 48-63:16-31:112-127:80-95 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --dat hpcg.dat",
+              ("JWB","gpu"):      "${additional_nvhpcg_config} --of 1 --ucx-affinity mlx5_0:mlx5_1:mlx5_2:mlx5_3 --cpu-affinity 18-23:6-11:42-47:30-35 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --dat hpcg.dat"
+            }.get(("${system}","${execution_device}"),"")'
+      - { name: gres,                       _: "gpu:4" }
     # ROCm
   - name: systemParameter
     init_with: platform.xml
-    tag: 'rocm+!cpu+!cuda'
+    tag: 'rocm+!cpu+!cuda+!nvidia'
     parameter:
       - { name: nodes,          type: int, _: 1           }
       - { name: taskspernode,   type: int, _: 8           }
@@ -121,9 +209,30 @@ parameterset:
   - name: executeset
     init_with: platform.xml
     parameter:
-      - { name: args_starter, tag: 'cpu+!cuda+!rocm', mode: python, _: '{ "JRDC": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads"}.get("${system}", "")' }
-      - { name: args_starter, tag: 'cuda+!cpu+!rocm', mode: python, _: '{ "JRDC": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none", "JWB": "--cpus-per-task=${threadspertask} --cpu-bind=none"}.get("${system}", "")' }
-      - { name: args_starter, tag: 'rocm+!cpu+!cuda', _: "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads" }
+      - { name: submit_script, tag: 'jedi', _: "submit.jedi" }
+      - name: args_starter
+        tag: 'cpu+!nvidia+!cuda+!rocm'
+        mode: python
+        _: '{ "JRDC": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads",
+              "JWB":  "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads",
+              "JEDI": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads"
+            }.get("${system}", "")'
+      - name: args_starter
+        tag: 'cuda+!nvidia+!cpu+!rocm'
+        mode: python
+        _: '{ "JRDC": "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none",
+              "JWB":  "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none"
+            }.get("${system}", "")'
+      - name: args_starter
+        tag: 'nvidia+!rocm'
+        mode: python
+        _: '{ ("JRDC","gpu"):     "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none",
+              ("JWB","gpu"):      "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none",
+              ("JEDI","cpu"):     "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none",
+              ("JEDI","gpu"):     "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=none --gpus-per-task=${gpuspertask}",
+              ("JEDI","cpu+gpu"): "--threads-per-core=1 --cpu-bind=none"
+            }.get(("${system}","${execution_device}"), "")'
+      - { name: args_starter, tag: 'rocm+!nvidia+!cpu+!cuda', _: "--threads-per-core=1 --cpus-per-task=${threadspertask} --cpu-bind=threads" }
 
 step:
   # compile HPCG benchmark
@@ -135,19 +244,18 @@ step:
       - hpcg_comp_param
       - sources
     do:
-            #- tag: 'cpu|cuda'
-      - tag: 'cpu|cuda|rocm'
+      - tag: 'cpu|cuda|nvidia|rocm'
         _: ${load_modules};
-        # CPU or ROCm
-      - tag: '!cuda+!binary'
+        # CPU (not nvidia-hpcg) or ROCm
+      - tag: '((cpu+!nvidia)|rocm)+!binary'
         _: module load CMake;
-        # CPU, ROCm, CUDA
+        # CPU, ROCm, CUDA, Nvidia
       - tag: '!binary'
            # download source code (CPU, ROCm)
            # or modify hpcg.sh proxy script (CUDA)
-        _: sh ${prep_script} ${src_dir};
+        _: sh ${prep_script} ${src_dir} ${git_commitid};
         # CPU
-      - tag: 'cpu+!cuda+!rocm+!binary'
+      - tag: 'cpu+!cuda+!nvidia+!rocm+!binary'
         work_dir: "src/hpcg-cpu"
         _: |
            if [ -d build ]; then
@@ -155,9 +263,88 @@ step:
                rm -rf build;
            fi
            mkdir build; cd build;
-           cmake -DCMAKE_CXX_COMPILER=${cxx_compiler} -DCMAKE_BUILD_TYPE=Release -DHPCG_ENABLE_MPI=ON -DHPCG_ENABLE_OPENMP=ON ../ && make -j 16;
-        # ROCm
-      - tag: 'rocm+!cpu+!cuda+!binary'
+           cmake -DCMAKE_CXX_COMPILER=${cxx_compiler} -DCMAKE_BUILD_TYPE=Release -DHPCG_ENABLE_MPI=ON -DHPCG_ENABLE_OPENMP=ON ${additional_cmake_config} ../ && make -j 16;
+      - tag: 'nvidia+!binary'
+        work_dir: "src/hpcg-nvidia"
+        _: |
+           if [ -d build ]; then
+               make clean
+               echo "directory \"build\" already exists - deleting previous HPCG build"
+               rm -rf build;
+           fi
+           if [ -f bin/xhpcg ]; then
+               rm bin/xhpcg
+           fi
+           if [ -f bin/xhpcg-cpu ]; then
+               rm bin/xhpcg-cpu
+           fi
+      # CUDA-only on x86_64 for building nvidia-hpcg with CUDA support on JRDC or JWB
+      - tag: 'nvidia+cuda+(jrdc|jwb)+!binary'
+        work_dir: "src/hpcg-nvidia"
+        _: |
+           echo "building nvidia-hpcg on x86_64 platform"
+           export USE_CUDA=1
+           export USE_GRACE=0
+           export USE_NCCL=1
+           export CUDA_PATH=$$EBROOTCUDA
+           export MPI_PATH=${mpi_root_path}
+           export MATHLIBS_PATH=$$EBROOTNVHPC/Linux_x86_64/24.3/math_libs/12.3
+           export NCCL_PATH=$$EBROOTNVHPC/Linux_x86_64/24.3/comm_libs/12.3/nccl
+           echo "USE_CUDA=$$USE_CUDA"
+           echo "USE_GRACE=$$USE_GRACE"
+           echo "USE_NCCL=$$USE_NCCL"
+           echo "CUDA_PATH=$$CUDA_PATH"
+           echo "MATHLIBS_PATH=$$MATHLIBS_PATH"
+           echo "MPI_PATH=$$MPI_PATH"
+           echo "NCCL_PATH=$$NCCL_PATH"
+           sh ./build_sample.sh 0 ${git_commitid} 3 1 $$USE_CUDA $$USE_GRACE $$USE_NCCL
+      # common env for building nvidia-hpcg on JEDI
+      - tag: 'nvidia+jedi+!binary'
+        _: |
+           export USE_CUDA=0
+           export USE_GRACE=0
+           export USE_NCCL=0
+           export MPI_PATH=${mpi_root_path}
+           export MATHLIBS_PATH=$$EBROOTNVHPC/Linux_aarch64/24.3/math_libs/12.3
+      # CPU-only with nvidia-hpcg on JEDI
+      - tag: 'nvidia+cpu+jedi+!cuda+!binary'
+        _: |
+           export USE_CUDA=0
+           export USE_GRACE=1
+           export USE_NCCL=0
+           export NVPL_SPARSE_PATH=$$EBROOTNVPL
+      # CUDA with nvidia-hpcg on JEDI
+      - tag: 'nvidia+cuda+jedi+!cpu+!binary'
+        _: |
+           export USE_CUDA=1
+           export USE_GRACE=0
+           export USE_NCCL=1
+           export CUDA_PATH=$$EBROOTCUDA
+           export NCCL_PATH=$$EBROOTNVHPC/Linux_aarch64/24.3/comm_libs/12.3/nccl
+      # CPU+CUDA with nvidia-hpcg on JEDI
+      - tag: 'nvidia+cpu+cuda+jedi+!binary'
+        _: |
+           export USE_CUDA=1
+           export USE_GRACE=1
+           export USE_NCCL=1
+           export CUDA_PATH=$$EBROOTCUDA
+           export NVPL_SPARSE_PATH=$$EBROOTNVPL
+           export NCCL_PATH=$$EBROOTNVHPC/Linux_aarch64/24.3/comm_libs/12.3/nccl
+      - tag: 'nvidia+jedi+!binary'
+        work_dir: "src/hpcg-nvidia"
+        _: |
+           echo "building nvidia-hpcg on Grace-Hopper platform"
+           echo "USE_CUDA=$$USE_CUDA"
+           echo "USE_GRACE=$$USE_GRACE"
+           echo "USE_NCCL=$$USE_NCCL"
+           echo "CUDA_PATH=$$CUDA_PATH"
+           echo "MATHLIBS_PATH=$$MATHLIBS_PATH"
+           echo "MPI_PATH=$$MPI_PATH"
+           echo "NVPL_SPARSE_PATH=$$NVPL_SPARSE_PATH"
+           echo "NCCL_PATH=$$NCCL_PATH"
+           sh ./build_sample.sh 0 ${git_commitid} 3 1 $$USE_CUDA $$USE_GRACE $$USE_NCCL
+      # ROCm
+      - tag: 'rocm+!cpu+!cuda+!nvidia+!binary'
         work_dir: "src/hpcg-rocm"
         _: |
            if [ -d build/release/reference ]; then
@@ -179,9 +366,10 @@ step:
       - hpcg_param
       - systemParameter
       - executeset
+      - jobscript
+      - executesub
       - from: platform.xml
-        _: executesub
-      - from: platform.xml
+        tag: '!jedi'
         _: jobfiles
     do:
       - { done_file: $done_file, _: "${submit} ${submit_script}" }

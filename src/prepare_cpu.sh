@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 BRANCHNAME=master
-COMMITID=e64982640f0aa83f851fe3e1405c61d9a6d7321c
+COMMITID=${2}
 HPCG_PATH=${1:-'hpcg-cpu'}
 
 if [[ ! -d ${HPCG_PATH} ]]; then
