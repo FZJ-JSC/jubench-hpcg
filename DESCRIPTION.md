@@ -40,11 +40,11 @@ Candidates are free to use optimized, proprietary versions as long as these comp
 
 We recommend using the provided JUBE script, which handles the build process as well; see subsection _JUBE_ below. Only the Nvidia HPCG container image requires manual preprocessing.
 
-HPCG can be built for CPU (x86_64 and Arm (Grace), HPCG reference implementation; Grace platform with nvidia-hpcg) as well as GPU (AMD: rocHPCG source code, Nvidia: HPCG container image and nvidia-hpcg). Best performance on the NVIDIA Grace-Hopper platform can be achieved with nvidia-hpcg. For optimal performance on ARM other than the NVIDIA Grace, however, it is highly recommended to use `HPCG_for_ARM` (see link above) instead, which was not integrated into the provided JUBE script.
+HPCG can be built for CPU (x86_64 and Arm (Grace), HPCG reference implementation; Grace platform with nvidia-hpcg) as well as GPU (AMD: rocHPCG source code, Nvidia: HPCG container image and nvidia-hpcg). Best performance on the NVIDIA Grace-Hopper platform can be achieved with nvidia-hpcg. For optimal performance on ARM other than NVIDIA Grace, however, it is highly recommended to use `HPCG_for_ARM` (see link above) instead, which was not integrated into the provided JUBE script.
 
 ### CPU (x86_64, Arm)
 
-The HPCG reference implementation depends on very few other packages; it needs a recent compiler (e.g. GCC (g++) or Intel oneAPI DPC++/C++ Compiler (icpx)), MPI support, and CMake for installation. A script (`src/prepare_cpu.sh`) for downloading the source code is provided.
+The HPCG reference implementation depends on very few other packages; it needs a recent compiler (e.g. GCC (g++) or Intel oneAPI DPC++/C++ Compiler (icpx)), MPI support, and CMake for installation. A script (`src/prepare_cpu.sh`) for downloading the source code is provided. Arm support on Grace platform is available via `-DCMAKE_CXX_FLAGS=-mcpu=neoverse-v2`; for details refer to https://nvidia.github.io/grace-cpu-benchmarking-guide/developer/languages/c-c++.html.
 
 The source code can be built with:
 
@@ -65,7 +65,7 @@ After registration for NGC, the Nvidia HPC-Benchmarks 21.4 HPCG container image 
 
 https://catalog.ngc.nvidia.com/orgs/nvidia/containers/hpc-benchmarks
 
-On our existing HPC systems, it was noticed that this HPCG container does not support multinode setups via Apptainer; instead, only single-node jobs were successful. In the provided reference JUBE version, the binary is hence not executed within the context of the container. However, this limitation might not exist on other systems, so the candidate may decide freely whether to use the container or an extracted binary.
+On our existing HPC systems, it was noticed that this HPCG container does not support multinode setups via Apptainer; instead, only single-node jobs were successful. In the provided reference JUBE script, the binary is hence not executed within the context of the container. However, this limitation might not exist on other systems, so the candidate may decide freely whether to use the container or an extracted binary.
 
 In order to omit the container, extract the `xhpcg` binary as well as the `hpcg.sh` proxy script from inside the container to the benchmark subfolder `src/hpcg-cuda/` on the host file system. The provided script `src/prepare_cuda.sh` copies the extracted `hpcg.sh` as `hpcg.bash` and therein updates the variable `XHPCG` with the absolute path to the extracted `xhpcg` binary.
 The extracted binary depends on the CUDA toolkit (tested v11.5) and OpenMPI (tested v4.1.2); CUDA driver version >= 450.36 is required.
@@ -83,7 +83,7 @@ mkdir -p ${HPCG_CUDA}
 bash src/prepare_cuda.sh ${HPCG_CUDA}
 ```
 
-### GPU, CPU (Grace), GPU+CPU: nvidia-hpcg
+### GPU (Grace, x86_64), CPU (Grace), GPU+CPU: nvidia-hpcg
 
 NVIDIA's Open Source version of their HPCG benchmark is available at
 
@@ -99,8 +99,6 @@ A build script is provided, which requires several arguments and reads various e
     export NCCL_PATH=$$EBROOTNVHPC/Linux_x86_64/24.3/comm_libs/12.3/nccl
     # module NVPL is only available on JEDI
     export NVPL_SPARSE_PATH=$EBROOTNVPL
-    # NVPL_PATH is required by Makefiles setup/Make.{CUDA_AARCH64,CUDA_X86}
-    export NVPL_PATH=$NVPL_SPARSE_PATH
     # 1: CUDA on,  0: CUDA off
     # 1: GRACE on, 0: GRACE off
     # 1: NCCL on,  0: NCCL off
@@ -118,7 +116,7 @@ A build script is provided, which requires several arguments and reads various e
     # $7 --> USE_NCCL
     sh ./build_sample.sh 0 $HPCG_COMMIT_HASH $HPCG_VER_MAJOR $HPCG_VER_MINOR $USE_CUDA $USE_GRACE $USE_NCCL
 ```
-When executing the binary you might have to preload `libcusparse.so` and/or `libnvpl_sparse.so` using LD_PRELOAD, because the benchmark requires a library version >12.1, which is checked at runtime.
+When executing the binary you might have to modify `LD_LIBRARY_PATH` otherwise the wrong library versions of `libnvpl_sparse.so`, `libcusparse.so`, `libcublas.so`, `libcublasLt.so`, or `libnccl.so` may be used. The benchmark checks at runtime whether the sparse-libraries' version is >12.1.
 
 ### GPU: AMD ROCm
 
@@ -177,7 +175,7 @@ srun --cpu-bind=threads --nodes=1 --ntasks-per-node=64 --cpus-per-task=${OMP_NUM
 
 ### Nvidia CUDA on x86_64 platform
 
-#### Nvidia closed source HPC Benchmark
+#### Nvidia closed source HPC-Benchmarks
 
 The executable of Nvidia's HPCG benchmark is `xhpcg`, to be found in the according container or extracted from it (see above). The provided parameter file `src/dat-files/hpcg-cuda.dat` needs to be given as an argument to the proxy script `src/hpcg-cuda/hpcg.bash`, which wraps `xhpcg` and maps local MPI ranks to a node's resources. Here is an example for JUWELS Booster:
 
@@ -193,8 +191,9 @@ srun --threads-per-core=1 --nodes=1 --ntasks-per-node=4 --cpus-per-task=${OMP_NU
 * i.e. no matter what these env vars were set to before executing this Nvidia shell script, these env vars will always be overwritten with the above given values
 ```
 # JUWELS booster
+export LD_LIBRARY_PATH=${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64:${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib:${LD_LIBRARY_PATH}
 export OMP_NUM_THREADS=6
-srun --threads-per-core=1 --nodes=1 --ntasks-per-node=4 --cpus-per-task=${OMP_NUM_THREADS} --cpu-bind=none env LD_PRELOAD=$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh hpcg-nvidia/bin/hpcg.sh --of 1 --ucx-affinity mlx5_0:mlx5_1:mlx5_2:mlx5_3 --cpu-affinity 18-23:6-11:42-47:30-35 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --dat hpcg.dat
+srun --threads-per-core=1 --nodes=1 --ntasks-per-node=4 --cpus-per-task=${OMP_NUM_THREADS} --cpu-bind=none sh hpcg-nvidia/bin/hpcg.sh --of 1 --ucx-affinity mlx5_0:mlx5_1:mlx5_2:mlx5_3 --cpu-affinity 18-23:6-11:42-47:30-35 --mem-affinity 3:1:7:5 --gpu-affinity 0:1:2:3 --dat hpcg.dat
 ```
 
 ### Nvidia CUDA/CPU on Grace-Hopper platform (Nvidia open source benchmark)
@@ -209,24 +208,26 @@ export OMP_PLACES=${OMP_PLACES:-sockets}
 #### CUDA
 
 ```
+export LD_LIBRARY_PATH=${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64:${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib:${LD_LIBRARY_PATH}
 export OMP_NUM_THREADS=72
-srun --threads-per-core=1 --cpus-per-task=${OMP_NUM_THREADS} --cpu-bind=none --gpus-per-task=1 env LD_PRELOAD=$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh hpcg-nvidia/bin/hpcg-aarch64.sh --of 1 --nx ${hpcg_local_dim_x} --ny ${hpcg_local_dim_y} --nz ${hpcg_local_dim_z} --rt ${hpcg_time} --cpu-affinity 0-71:72-143:144-215:216-287 --mem-affinity 0:1:2:3
+srun --threads-per-core=1 --cpus-per-task=${OMP_NUM_THREADS} --cpu-bind=none --gpus-per-task=1 sh hpcg-nvidia/bin/hpcg-aarch64.sh --of 1 --nx 512 --ny 512 --nz 288 --rt 600 --cpu-affinity 0-71:72-143:144-215:216-287 --mem-affinity 0:1:2:3
 ```
 
 #### CUDA+CPU
 
 ```
+export LD_LIBRARY_PATH=${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64:${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib:${EBROOTNVPL}/lib:${LD_LIBRARY_PATH}
 # do not set OMP_NUM_THREADS
-srun --threads-per-core=1 --cpu-bind=none env LD_PRELOAD=$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib/libnccl.so:$${EBROOTNVPL}/lib/libnvpl_sparse.so sh hpcg-nvidia/bin/hpcg-aarch64.sh --of 1 --nx ${hpcg_local_dim_x} --ny ${hpcg_local_dim_y} --nz ${hpcg_local_dim_z} --rt ${hpcg_time} --exm 2 --ddm 2 --lpm 1 --g2c 64 --npx 4 --npy 2 --npz 1 --cpu-affinity 0-7:8-71:72-79:80-143:144-151:152-215:216-223:224-287 --mem-affinity 0:0:1:1:2:2:3:3
+srun --threads-per-core=1 --cpu-bind=none sh hpcg-nvidia/bin/hpcg-aarch64.sh --of 1 --nx 256 --ny 1024 --nz 288 --rt 600 --exm 2 --ddm 2 --lpm 1 --g2c 64 --npx 4 --npy 2 --npz 1 --cpu-affinity 0-7:8-71:72-79:80-143:144-151:152-215:216-223:224-287 --mem-affinity 0:0:1:1:2:2:3:3
 ```
 
 #### CPU
 
-* we have noticed on JEDI that the Grace-only build of nvidia-hpcg crashes with the local grid size suggested by Nvidia in `src/hpcg-nvidia/bin/RUNNING-aarch64` (x=512,y=512,z=288)
-* we therefore opted to use a smaller but stably running local grid size of x=512,y=256,z=288 until this issue has been resolved
+The local grid size recommended by Nvidia for the Grace-only build of nvidia-hpcg is x=y=512,z=256 (personal communication). On JEDI, however, we have noticed that a significant fraction of such test jobs crash due to out-of-memory errors. We therefore opted to use a smaller and more stably running local grid size of x=y=448,z=256 until this issue has been resolved.
 ```
+export LD_LIBRARY_PATH=${EBROOTNVPL}/lib:${LD_LIBRARY_PATH}
 export OMP_NUM_THREADS=72
-srun --threads-per-core=1 --cpus-per-task=${OMP_NUM_THREADS} --cpu-bind=none env LD_PRELOAD=${EBROOTNVPL}/lib/libnvpl_sparse.so sh hpcg-nvidia/bin/hpcg-aarch64.sh --of 1 --nx ${hpcg_local_dim_x} --ny ${hpcg_local_dim_y} --nz ${hpcg_local_dim_z} --rt ${hpcg_time} --exm 1 --cpu-affinity 0-71:72-143:144-215:216-287 --mem-affinity 0:1:2:3
+srun --threads-per-core=1 --cpus-per-task=${OMP_NUM_THREADS} --cpu-bind=none sh hpcg-nvidia/bin/hpcg-aarch64.sh --of 1 --nx 448 --ny 448 --nz 256 --rt 600 --exm 1 --cpu-affinity 0-71:72-143:144-215:216-287 --mem-affinity 0:1:2:3
 ```
 
 ### AMD ROCm
@@ -252,15 +253,21 @@ Modules for `JUBE` and `Python` need to be loaded and the current working direct
 module load Python JUBE
 
 # s24      Stages/2024
+# jedi     JEDI
+# go       GCC/NVHPC+OpenMPI
+# nvidia   Nvidia open source HPCG benchmark
+# cpu+cuda CPU and GPU in parallel on Grace-Hopper platform
+jube run benchmark/jube/hpcg.yml -t s24 jedi go cpu cuda nvidia
+
+# s24      Stages/2024
 # jrdc     JURECA-DC
 # ips      ICX+ParaStationMPI
 # cpu      HPCG v3.1 with CPU support (x86_64)
 jube run benchmark/jube/hpcg.yml -t s24 jrdc ips cpu
 
-# s22      Stages/2022
 # jwb      JUWELS booster
 # go       GCC+OpenMPI
-# cuda     HPCG with Nvidia GPU support
+# cuda+s22 Nvidia closed source HPC benchmark with GPU support on Stages/2022
 jube run benchmark/jube/hpcg.yml -t s22 jwb go cuda
 
 jube continue benchmark/jube/bench_run --id <JUBE ID>
@@ -279,7 +286,7 @@ The following JUBE tags are available:
 | `rocm`                          | execute benchmark on AMD ROCm device                                                                                 |
 | `nvidia`                        | Nvidia open source benchmark on CPU (Grace) and/or CUDA (Hopper), on CUDA (x86_64)                                   |
 | `noref`                         | speeds up Nvidia open source benchmark jobs by skipping CPU reference calculation                                    |
-| `binary`                        | Use pre-compiled binary (CPU (not nvidia-hpcg) and ROCm)                                                             |
+| `binary`                        | Use pre-compiled binary; default: skips compile step and re-uses binary from previous JUBE run                       |
 | `s22`/`s23`/`s24`               | Use JSC software stage Stages/2022 / Stages/2023 / Stages/2024                                                       |
 | `jrdc`/`jwb`/`jedi`             | Target system: JURECA-DC / JUWELS booster / JEDI                                                                     |
 | `rack`/`cell`                   | Adds Slurm constraint to spawn job within specified rack or cell only                                                |

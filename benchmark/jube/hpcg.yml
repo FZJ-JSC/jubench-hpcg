@@ -42,8 +42,8 @@ parameterset:
       - name: cxx_flags
         tag: 'cpu+!nvidia+!cuda+!rocm'
         mode: python
-        _: '{ "JRDC": "-DCMAKE_CXX_FLAGS=-mcpu=znver2",
-              "JWB":  "-DCMAKE_CXX_FLAGS=-mcpu=znver2",
+        _: '{ "JRDC": "-DCMAKE_CXX_FLAGS=-march=znver2",
+              "JWB":  "-DCMAKE_CXX_FLAGS=-march=znver2",
               "JEDI": "-DCMAKE_CXX_FLAGS=-mcpu=neoverse-v2"
             }.get("${system}", "")'
       # CUDA (JRDC, JWB)
@@ -93,9 +93,9 @@ parameterset:
       - { name: hpcg_local_dim_z, tag: 'nvidia+cuda+!rocm+!cpu+jedi', type: int, _: 288 }
       - { name: execution_device, tag: 'nvidia+cuda+!rocm+!cpu+jedi', _: "gpu" }
       # nvidia-hpcg CPU (JEDI)
-      - { name: hpcg_local_dim_x, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 512 }
-      - { name: hpcg_local_dim_y, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 256 }
-      - { name: hpcg_local_dim_z, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 288 }
+      - { name: hpcg_local_dim_x, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 448 }
+      - { name: hpcg_local_dim_y, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 448 }
+      - { name: hpcg_local_dim_z, tag: 'nvidia+cpu+!rocm+!cuda+jedi', type: int, _: 256 }
       - { name: execution_device, tag: 'nvidia+cpu+!rocm+!cuda+jedi', _: "cpu" }
       # nvidia-hpcg CPU+CUDA (JEDI)
       - { name: hpcg_local_dim_x, tag: 'nvidia+cpu+cuda+!rocm+jedi', type: int, _: 256  }
@@ -113,8 +113,8 @@ parameterset:
     tag: 'cpu+!nvidia+!cuda+!rocm'
     parameter:
       - { name: nodes,                        type: int, _: 1 }
-      - { name: idx,            mode: python, type: int, _: '{"JRDC": 0, "JWB": 0, "JEDI": 3}["${system}"]' }
-        #- { name: idx,            mode: python, type: int, _: '{"JRDC": "0,1,2,3", "JWB": 0, "JEDI": 0}["${system}"]' }
+      - { name: idx,            mode: python, type: int, _: '{"JRDC": 0, "JWB": 0, "JEDI": 1}["${system}"]' }
+        #- { name: idx,            mode: python, type: int, _: '{"JRDC": "0,1,2,3", "JWB": "0,1,2,3", "JEDI": "1,2,3"}["${system}"]' }
       - { name: taskspernode,   mode: python, type: int, _: '{"JRDC": [128,64,32,16][$idx], "JWB": [48,24,12,6][$idx], "JEDI": [288,144,72,36][$idx]}["${system}"]' }
       - { name: threadspertask, mode: python, type: int, _: '{"JRDC": [1,2,4,8][$idx], "JWB": [1,2,4,8][$idx], "JEDI": [1,2,4,8][$idx]}["${system}"]' }
       - { name: queue,          mode: python,            _: '{"JRDC": "dc-cpu-devel", "JWB": "develbooster", "JEDI": "all"}["${system}"]' }
@@ -143,18 +143,27 @@ parameterset:
       - { name: queue,          mode: python,            _: '{"JEDI": "all", "JRDC": "dc-gpu-devel", "JWB": "develbooster"}["${system}"]' }
       - { name: cell, tag: 'cell', mode: python, _: '{"JRDC": "[cell02|cell03|cell04|cell05]", "JWB": "[bcell01|bcell02|bcell03|bcell04|bcell05|bcell06|bcell07|bcell08|bcell09|bcell10|bcell11|bcell12|bcell13|bcell14|bcell15|bcell16|bcell17|bcell18]"}.get("${system}", "")' }
       - { name: rack, tag: 'rack', mode: python, _: '{"JRDC": "[rack03|rack04|rack05|rack06|rack07|rack08|rack09|rack10]"}.get("${system}", "")' }
+      - { name: constraint, tag: '!cell+!rack',  _: ""                                 }
       - { name: constraint, tag: 'cell+!rack',   _: "#SBATCH --constraint=\"${cell}\"" }
       - { name: constraint, tag: 'rack+!cell',   _: "#SBATCH --constraint=\"${rack}\"" }
-      - { name: additional_job_config, tag: 'cell|rack',    _: "${constraint}\n\n${load_modules}" }
-      - { name: additional_job_config, tag: '!(cell|rack)', _: "${load_modules}" }
+      - { name: additional_job_config, mode: python, _: '"\n\n".join([x for x in "${constraint}#${load_modules}#${ld_library_path}".split("#") if len(x) > 0])' }
+      - { name: nccl_path, tag: 'jedi+!cuda', _: "" }
+      - { name: math_path, tag: 'jedi+!cuda', _: "" }
+      - { name: nvpl_path, tag: 'jedi+!cpu',  _: "" }
+      - { name: nccl_path, tag: 'jrdc+cuda', _: "$${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib"  }
+      - { name: math_path, tag: 'jrdc+cuda', _: "$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64"     }
+      - { name: nccl_path, tag: 'jedi+cuda', _: "$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib" }
+      - { name: math_path, tag: 'jedi+cuda', _: "$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64"    }
+      - { name: nvpl_path, tag: 'jedi+cpu',  _: "$${EBROOTNVPL}/lib" }
+      - { name: ld_library_path, mode: python, _: '"export LD_LIBRARY_PATH="+":".join([x for x in "${nvpl_path}#${nccl_path}#${math_path}#$${LD_LIBRARY_PATH}".split("#") if len(x) > 0])' }
       - { name: OMP_PROC_BIND,   export: true, _: "true"  }
       - { name: OMP_DISPLAY_ENV, export: true, _: "false" }
       - { name: OMP_NUM_THREADS, export: true,  tag: '!(nvidia+cpu+cuda+jedi)', _: "${threadspertask}" }
       - { name: OMP_NUM_THREADS, export: false, tag: 'nvidia+cpu+cuda+jedi',    _: ""                  }
-      - { name: timelimit,                  _: "00:30:00" }
-      - { name: measurement,                _: "time -p"  }
-      - { name: noref_calc, tag: 'noref+nvidia',  _: "--b 1" }
-      - { name: noref_calc, tag: '!noref+nvidia', _: ""      }
+      - { name: timelimit,                 _: "00:30:00" }
+      - { name: measurement,               _: "time -p"  }
+      - { name: noref_calc, tag: 'noref',  _: "--b 1" }
+      - { name: noref_calc, tag: '!noref', _: ""      }
       - { name: additional_nvhpcg_config, mode: python, _: '" ".join([x for x in "${noref_calc}".split("#") if len(x) > 0])' }
       - name: executable
         tag: 'cuda+(jrdc|jwb)+!nvidia+!cpu+!rocm'
@@ -167,11 +176,11 @@ parameterset:
         tag: 'nvidia+!rocm'
         mode: python
         separator: '|'
-        _: '{ ("JEDI","gpu"):     "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
-              ("JEDI","cpu"):     "env LD_PRELOAD=$${EBROOTNVPL}/lib/libnvpl_sparse.so sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
-              ("JEDI","cpu+gpu"): "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_aarch64/24.3/comm_libs/12.3/nccl/lib/libnccl.so:$${EBROOTNVPL}/lib/libnvpl_sparse.so sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
-              ("JRDC","gpu"):     "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh ./compile/src/hpcg-nvidia/bin/hpcg.sh",
-              ("JWB","gpu"):      "env LD_PRELOAD=$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcusparse.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublas.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/math_libs/12.3/lib64/libcublasLt.so:$${EBROOTNVHPC}/Linux_x86_64/24.3/comm_libs/12.3/nccl/lib/libnccl.so sh ./compile/src/hpcg-nvidia/bin/hpcg.sh"
+        _: '{ ("JEDI","gpu"):     "sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
+              ("JEDI","cpu"):     "sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
+              ("JEDI","cpu+gpu"): "sh ./compile/src/hpcg-nvidia/bin/hpcg-aarch64.sh",
+              ("JRDC","gpu"):     "sh ./compile/src/hpcg-nvidia/bin/hpcg.sh",
+              ("JWB","gpu"):      "sh ./compile/src/hpcg-nvidia/bin/hpcg.sh"
             }.get(("${system}","${execution_device}"), "unsupported system-execution_device combi")'
       - { name: args_exec, tag: 'cpu+!nvidia+!cuda+!rocm', _: "" }
       - name: args_exec
@@ -372,7 +381,7 @@ step:
         tag: '!jedi'
         _: jobfiles
     do:
-      - { done_file: $done_file, _: "${submit} ${submit_script}" }
+      - { done_file: $done_file, error_file: $error_file, _: "${submit} ${submit_script}" }
 
 # _______________RESULT________________
 patternset:
@@ -404,8 +413,8 @@ patternset:
       - { name: AvgAllreduce,  mode: pattern, _: 'DDOT Timing Variations::Avg DDOT MPI_Allreduce time=${jube_pat_fp}' }
       - { name: GF_RawTotal,   mode: pattern, _: 'GFLOP/s Summary::Raw Total=${jube_pat_fp}'  }
       - { name: GF_Total,      mode: pattern, _: 'GFLOP/s Summary::Total with convergence and optimization phase overhead=${jube_pat_fp}' }
-      # result verification; check if VALID is present in result file
-      - { name: valid,         mode: shell,   _: 'grep -c VALID ${hpcg_log_file}' }
+      # result verification; check if VALID or INVALID is present in result file
+      - { name: valid,         mode: pattern, _: 'Final Summary::HPCG result is ${jube_pat_wrd} with a GFLOP' }
 
 analyser:
   name: analyse
